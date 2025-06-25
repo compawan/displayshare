@@ -1,78 +1,76 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>WebRTC Screen Share Test</title>
   <style>
-  body {
-    font-family: sans-serif;
-    text-align: center;
-    margin-top: 40px;
-  }
-  video {
-    width: 90%;
-    max-width: 1000px;
-    border: 2px solid #333;
-    margin-top: 20px;
-  }
-  button {
-    padding: 10px 20px;
-    font-size: 16px;
-  }
-</style>
-
+    body { font-family: sans-serif; text-align: center; margin-top: 40px; }
+    video { width: 90%; max-width: 1000px; border: 2px solid #333; margin-top: 20px; }
+    button { padding: 10px 20px; font-size: 16px; margin: 10px; }
+  </style>
 </head>
 <body>
   <h2>WebRTC Screen Sharing Test</h2>
-  <button id="start">Start Screen Share</button>
+  <input id="roomIdInput" placeholder="Enter Room ID" />
+  <button id="joinBtn">Join Room</button>
+  <button id="start" disabled>Start Screen Share</button>
   <video id="remoteVideo" autoplay playsinline></video>
 
   <script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
   <script>
-    const socket = io(); // connect to same host
+    let socket;
+    let roomId;
     const peerConnection = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
     });
 
     const remoteVideo = document.getElementById('remoteVideo');
 
-    // ICE candidate handler
     peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
-        socket.emit('signal', { type: 'ice', candidate: event.candidate });
+        socket.emit('signal', { type: 'ice', candidate: event.candidate, roomId });
       }
     };
 
-    // Display incoming stream
     peerConnection.ontrack = (event) => {
       remoteVideo.srcObject = event.streams[0];
     };
 
-    // Receive signaling messages
-    socket.on('signal', async (data) => {
-      if (data.type === 'offer') {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        socket.emit('signal', { type: 'answer', answer });
-      } else if (data.type === 'answer') {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-      } else if (data.type === 'ice') {
-        try {
-          await peerConnection.addIceCandidate(data.candidate);
-        } catch (e) {
-          console.error('Error adding ICE:', e);
-        }
+    document.getElementById('joinBtn').onclick = () => {
+      roomId = document.getElementById('roomIdInput').value.trim();
+      if (!roomId) {
+        alert("Enter a valid Room ID.");
+        return;
       }
-    });
 
-    // Start screen share
+      socket = io(); // Auto-connect to current host
+      socket.emit('join-room', roomId);
+      document.getElementById('start').disabled = false;
+
+      socket.on('signal', async (data) => {
+        if (data.type === 'offer') {
+          await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+          const answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
+          socket.emit('signal', { type: 'answer', answer, roomId });
+        } else if (data.type === 'answer') {
+          await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+        } else if (data.type === 'ice') {
+          try {
+            await peerConnection.addIceCandidate(data.candidate);
+          } catch (e) {
+            console.error('Error adding ICE:', e);
+          }
+        }
+      });
+    };
+
     document.getElementById('start').onclick = async () => {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
       stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
-      socket.emit('signal', { type: 'offer', offer });
+      socket.emit('signal', { type: 'offer', offer, roomId });
     };
   </script>
 </body>
