@@ -2,58 +2,62 @@
 <html>
 <head>
   <title>Screen Receiver</title>
+  <style>
+    body { margin: 0; background: black; }
+    video { width: 100vw; height: 100vh; object-fit: contain; }
+  </style>
 </head>
 <body>
-  <h2>📺 Screen Share Receiver</h2>
-  <video id="remoteVideo" autoplay playsinline style="width: 100%; max-width: 800px;"></video>
+  <video id="remoteVideo" autoplay playsinline></video>
 
   <script>
     const video = document.getElementById('remoteVideo');
     const pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     });
 
-    const socket = new WebSocket('wss://displayshare.onrender.com');
+    const socket = new WebSocket("wss://displayshare.onrender.com");
 
     socket.addEventListener('open', () => {
-      console.log("🟢 Connected to signaling server");
+      console.log("🔌 Connected to WebSocket");
     });
 
     socket.addEventListener('message', async (event) => {
       const data = JSON.parse(event.data);
-      console.log("📨 Message:", data);
+      console.log("📨 Received:", data);
 
-      if (data.type === 'offer') {
+      if (data.type === "offer") {
         await pc.setRemoteDescription(new RTCSessionDescription(data));
 
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
-        socket.send(JSON.stringify({
-          type: 'answer',
-          sdp: answer.sdp
-        }));
+        socket.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
       }
 
-      if (data.type === 'candidate') {
-        pc.addIceCandidate(new RTCIceCandidate(data));
+      if (data.type === "candidate") {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(data));
+        } catch (err) {
+          console.error("Error adding candidate:", err);
+        }
       }
     });
 
-    pc.onicecandidate = ({ candidate }) => {
-      if (candidate) {
-        socket.send(JSON.stringify({
-          type: 'candidate',
-          sdpMid: candidate.sdpMid,
-          sdpMLineIndex: candidate.sdpMLineIndex,
-          candidate: candidate.candidate
-        }));
-      }
+    pc.ontrack = (event) => {
+      console.log("📹 Got remote track", event.streams);
+      video.srcObject = event.streams[0];
     };
 
-    pc.ontrack = (event) => {
-      console.log("🎥 Track received");
-      video.srcObject = event.streams[0];
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.send(JSON.stringify({
+          type: "candidate",
+          sdpMid: event.candidate.sdpMid,
+          sdpMLineIndex: event.candidate.sdpMLineIndex,
+          candidate: event.candidate.candidate
+        }));
+      }
     };
   </script>
 </body>
