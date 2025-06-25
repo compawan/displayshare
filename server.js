@@ -12,26 +12,27 @@ const io = socketIo(server, {
   }
 });
 
-// Serve static files from 'public' directory
+// Serve static files (optional frontend)
 app.use(express.static(path.join(__dirname, 'public')));
 
 // WebSocket signaling logic
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+  console.log('🔌 Client connected:', socket.id);
 
   socket.on('join-room', (roomId) => {
     socket.join(roomId);
     const count = io.sockets.adapter.rooms.get(roomId)?.size || 0;
-    console.log(`Socket ${socket.id} joined room ${roomId}. Total: ${count}`);
+    console.log(`➡️  Socket ${socket.id} joined room ${roomId}. Total in room: ${count}`);
     socket.emit('room-joined', { roomId, count });
   });
 
   socket.on('signal', ({ roomId, ...data }) => {
-    socket.to(roomId).emit('signal', data); // send only to others in room
+    console.log(`📡 Signal from ${socket.id} to room ${roomId}`);
+    socket.to(roomId).emit('signal', data);
   });
 
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+    console.log('❌ Client disconnected:', socket.id);
   });
 });
 
