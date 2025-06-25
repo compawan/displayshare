@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Remote Controller</title>
+  <style>
+    body { text-align: center; font-family: sans-serif; margin: 20px; }
+    #touchArea {
+      width: 90vw;
+      height: 80vh;
+      border: 2px dashed #333;
+      margin: 20px auto;
+      background: #f2f2f2;
+      position: relative;
+    }
+    input, button {
+      font-size: 18px;
+      padding: 8px;
+      margin: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Remote Touch Controller</h2>
+  <input id="roomIdInput" placeholder="Enter Room ID" />
+  <button id="connectBtn">Connect</button>
+  <div id="touchArea">Click here to send touch</div>
+
+  <script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
+  <script>
+    let socket;
+    let roomId;
+
+    document.getElementById("connectBtn").onclick = () => {
+      roomId = document.getElementById("roomIdInput").value.trim();
+      if (!roomId) return alert("Enter a Room ID");
+
+      socket = io("https://displayshare.onrender.com");
+      socket.emit("join-room", roomId);
+    };
+
+    const touchArea = document.getElementById("touchArea");
+
+    touchArea.addEventListener("click", (e) => {
+      if (!socket || !roomId) return;
+
+      const rect = touchArea.getBoundingClientRect();
+      const x = Math.floor((e.clientX - rect.left) * (1080 / rect.width)); // map to real screen
+      const y = Math.floor((e.clientY - rect.top) * (1920 / rect.height)); // adjust resolution
+
+      socket.emit("signal", {
+        type: "click",
+        x,
+        y,
+        roomId
+      });
+
+      console.log("Sent click:", x, y);
+    });
+  </script>
+</body>
+</html>
