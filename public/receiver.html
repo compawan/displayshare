@@ -2,81 +2,72 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Screen Receiver</title>
+  <title>Receiver</title>
   <style>
-    body { font-family: sans-serif; text-align: center; margin-top: 40px; }
-    video { width: 90%; max-width: 1000px; border: 2px solid #333; margin-top: 20px; }
-    input, button { padding: 10px; font-size: 16px; margin: 10px; }
+    body { text-align: center; padding-top: 50px; }
+    video { width: 90%; max-width: 800px; border: 2px solid #000; }
   </style>
 </head>
 <body>
-  <h2>Remote Screen Viewer</h2>
-  <input id="roomIdInput" placeholder="Enter Room ID" />
-  <button id="joinBtn">Join Room</button>
+  <h2>Receiver (Room: 1234)</h2>
   <video id="remoteVideo" autoplay playsinline></video>
 
   <script>
-    let socket;
-    let roomId;
-    let peerConnection;
+    const ROOM_ID = "1234";
+    const video = document.getElementById("remoteVideo");
 
-    const remoteVideo = document.getElementById('remoteVideo');
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    });
 
-    function createPeerConnection() {
-      const pc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-      });
+    pc.ontrack = (e) => {
+      if (video.srcObject !== e.streams[0]) {
+        video.srcObject = e.streams[0];
+      }
+    };
 
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          socket.send(JSON.stringify({
-            type: 'ice',
-            candidate: event.candidate,
-            roomId
-          }));
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.send(JSON.stringify({
+          type: "ice",
+          candidate: {
+            candidate: event.candidate.candidate,
+            sdpMid: event.candidate.sdpMid,
+            sdpMLineIndex: event.candidate.sdpMLineIndex
+          },
+          roomId: ROOM_ID
+        }));
+      }
+    };
+
+    const socket = new WebSocket("wss://displayshare.onrender.com");
+
+    socket.onopen = () => {
+      socket.send(JSON.stringify({ type: "join-room", roomId: ROOM_ID }));
+    };
+
+    socket.onmessage = async (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.type === "offer") {
+        await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.send(JSON.stringify({
+          type: "answer",
+          answer: {
+            type: "answer",
+            sdp: answer.sdp
+          },
+          roomId: ROOM_ID
+        }));
+      } else if (data.type === "ice") {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+        } catch (e) {
+          console.error("ICE Error:", e);
         }
-      };
-
-      pc.ontrack = (event) => {
-        remoteVideo.srcObject = event.streams[0];
-      };
-
-      return pc;
-    }
-
-    document.getElementById('joinBtn').onclick = () => {
-      roomId = document.getElementById('roomIdInput').value.trim();
-      if (!roomId) return alert("Enter Room ID");
-
-      socket = new WebSocket(`wss://${location.host}`);
-
-      socket.onopen = () => {
-        socket.send(JSON.stringify({ type: "join-room", roomId }));
-      };
-
-      socket.onmessage = async (event) => {
-        const data = JSON.parse(event.data);
-
-        if (data.type === 'room-joined') {
-          console.log("Room joined. Participants:", data.count);
-        }
-
-        if (data.type === 'offer') {
-          peerConnection = createPeerConnection();
-          await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-          const answer = await peerConnection.createAnswer();
-          await peerConnection.setLocalDescription(answer);
-          socket.send(JSON.stringify({ type: 'answer', answer, roomId }));
-        }
-
-        if (data.type === 'ice') {
-          try {
-            await peerConnection.addIceCandidate(data.candidate);
-          } catch (e) {
-            console.error('ICE Error:', e);
-          }
-        }
-      };
+      }
     };
   </script>
 </body>
