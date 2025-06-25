@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Screen Receiver</title>
+</head>
+<body>
+  <h2>📺 Screen Share Receiver</h2>
+  <video id="remoteVideo" autoplay playsinline style="width: 100%; max-width: 800px;"></video>
+
+  <script>
+    const video = document.getElementById('remoteVideo');
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    });
+
+    const socket = new WebSocket('wss://displayshare.onrender.com');
+
+    socket.addEventListener('open', () => {
+      console.log("🟢 Connected to signaling server");
+    });
+
+    socket.addEventListener('message', async (event) => {
+      const data = JSON.parse(event.data);
+      console.log("📨 Message:", data);
+
+      if (data.type === 'offer') {
+        await pc.setRemoteDescription(new RTCSessionDescription(data));
+
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        socket.send(JSON.stringify({
+          type: 'answer',
+          sdp: answer.sdp
+        }));
+      }
+
+      if (data.type === 'candidate') {
+        pc.addIceCandidate(new RTCIceCandidate(data));
+      }
+    });
+
+    pc.onicecandidate = ({ candidate }) => {
+      if (candidate) {
+        socket.send(JSON.stringify({
+          type: 'candidate',
+          sdpMid: candidate.sdpMid,
+          sdpMLineIndex: candidate.sdpMLineIndex,
+          candidate: candidate.candidate
+        }));
+      }
+    };
+
+    pc.ontrack = (event) => {
+      console.log("🎥 Track received");
+      video.srcObject = event.streams[0];
+    };
+  </script>
+</body>
+</html>
