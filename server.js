@@ -1,40 +1,31 @@
 const express = require('express');
 const http = require('http');
-const { Server } = require('socket.io');
-const path = require('path');
+const WebSocket = require('ws');
 
 const app = express();
 const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
+wss.on('connection', (ws) => {
+  console.log('🔌 Client connected');
 
-app.use(express.static(path.join(__dirname, 'public')));
-
-io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
-
-  socket.on('join-room', (roomId) => {
-    socket.join(roomId);
-    const count = io.sockets.adapter.rooms.get(roomId)?.size || 0;
-    console.log(`Socket ${socket.id} joined room ${roomId}. Total: ${count}`);
-    socket.emit('room-joined', { roomId, count });
+  ws.on('message', (message) => {
+    console.log('📨 Received:', message.toString());
+    
+    // broadcast to all other clients
+    wss.clients.forEach(client => {
+      if (client !== ws && client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
   });
 
-  socket.on('signal', ({ roomId, ...data }) => {
-    socket.to(roomId).emit('signal', data);
-  });
-
-  socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+  ws.on('close', () => {
+    console.log('❌ Client disconnected');
   });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`✅ Signaling server running on port ${PORT}`);
+  console.log(`✅ WebSocket server running on port ${PORT}`);
 });
