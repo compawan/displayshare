@@ -12,21 +12,22 @@ const io = socketIo(server, {
   }
 });
 
-// Serve static files from the "public" folder
+// Serve static files from 'public' directory
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Handle socket connections
+// WebSocket signaling logic
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
   socket.on('join-room', (roomId) => {
     socket.join(roomId);
-    console.log(`Socket ${socket.id} joined room ${roomId}`);
+    const count = io.sockets.adapter.rooms.get(roomId)?.size || 0;
+    console.log(`Socket ${socket.id} joined room ${roomId}. Total: ${count}`);
+    socket.emit('room-joined', { roomId, count });
   });
 
   socket.on('signal', ({ roomId, ...data }) => {
-    // Send signal only to other clients in the same room
-    socket.to(roomId).emit('signal', data);
+    socket.to(roomId).emit('signal', data); // send only to others in room
   });
 
   socket.on('disconnect', () => {
@@ -34,7 +35,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// Start server
+// Start the server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Signaling server running at http://0.0.0.0:${PORT}`);
