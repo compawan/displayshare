@@ -1,63 +1,41 @@
 const express = require('express');
 const http = require('http');
-const WebSocket = require('ws');
+const socketIo = require('socket.io');
 const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const io = socketIo(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
-// Serve static files (including receiver.html)
+// Serve static files from the "public" folder
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Store clients by room
-const rooms = new Map();
+// Handle socket connections
+io.on('connection', (socket) => {
+  console.log('Client connected:', socket.id);
 
-wss.on('connection', (ws) => {
-  console.log('🔌 Client connected');
-
-  let currentRoom = null;
-
-  ws.on('message', (message) => {
-    try {
-      const data = JSON.parse(message.toString());
-
-      // Handle joining room
-      if (data.type === 'join-room') {
-        currentRoom = data.roomId;
-        if (!rooms.has(currentRoom)) rooms.set(currentRoom, []);
-        rooms.get(currentRoom).push(ws);
-
-        console.log(`👥 Joined room: ${currentRoom}`);
-        // Send current count
-        ws.send(JSON.stringify({ type: 'room-joined', count: rooms.get(currentRoom).length }));
-      }
-
-      // Broadcast signal to others in room
-      else if (data.type === 'offer' || data.type === 'answer' || data.type === 'ice') {
-        const clients = rooms.get(data.roomId) || [];
-        clients.forEach(client => {
-          if (client !== ws && client.readyState === WebSocket.OPEN) {
-            client.send(message);
-          }
-        });
-      }
-    } catch (e) {
-      console.error("Invalid JSON:", e);
-    }
+  socket.on('join-room', (roomId) => {
+    socket.join(roomId);
+    console.log(`Socket ${socket.id} joined room ${roomId}`);
   });
 
-  ws.on('close', () => {
-    if (currentRoom) {
-      const updated = (rooms.get(currentRoom) || []).filter(client => client !== ws);
-      if (updated.length === 0) rooms.delete(currentRoom);
-      else rooms.set(currentRoom, updated);
-    }
-    console.log('❌ Client disconnected');
+  socket.on('signal', ({ roomId, ...data }) => {
+    // Send signal only to other clients in the same room
+    socket.to(roomId).emit('signal', data);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
   });
 });
 
+// Start server
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`✅ WebSocket signaling server running at http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Signaling server running at http://0.0.0.0:${PORT}`);
 });
