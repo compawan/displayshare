@@ -17,7 +17,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // WebSocket signaling logic
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+  const ip = socket.handshake.address; // ✅ Added line to log IP
+  console.log(`Client connected: ${socket.id}, IP: ${ip}`);
 
   socket.on('join-room', (roomId) => {
     socket.join(roomId);
