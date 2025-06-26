@@ -1,72 +1,44 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Receiver</title>
-  <style>
-    body { text-align: center; padding-top: 50px; }
-    video { width: 90%; max-width: 800px; border: 2px solid #000; }
-  </style>
+  <title>📺 Screen Receiver</title>
 </head>
 <body>
-  <h2>Receiver (Room: 1234)</h2>
-  <video id="remoteVideo" autoplay playsinline></video>
+  <h2>📺 Phone Screen Viewer</h2>
+  <video id="screen" autoplay playsinline style="width: 100%; border: 2px solid #000;"></video>
 
   <script>
-    const ROOM_ID = "1234";
-    const video = document.getElementById("remoteVideo");
-
+    const socket = new WebSocket(`ws://${location.host}`);
+    const video = document.getElementById('screen');
     const pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     });
-
-    pc.ontrack = (e) => {
-      if (video.srcObject !== e.streams[0]) {
-        video.srcObject = e.streams[0];
-      }
-    };
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         socket.send(JSON.stringify({
-          type: "ice",
-          candidate: {
-            candidate: event.candidate.candidate,
-            sdpMid: event.candidate.sdpMid,
-            sdpMLineIndex: event.candidate.sdpMLineIndex
-          },
-          roomId: ROOM_ID
+          type: 'candidate',
+          candidate: event.candidate
         }));
       }
     };
 
-    const socket = new WebSocket("wss://displayshare.onrender.com");
-
-    socket.onopen = () => {
-      socket.send(JSON.stringify({ type: "join-room", roomId: ROOM_ID }));
+    pc.ontrack = (event) => {
+      console.log('✅ Received track:', event.streams[0]);
+      video.srcObject = event.streams[0];
     };
 
-    socket.onmessage = async (event) => {
-      const data = JSON.parse(event.data);
-
-      if (data.type === "offer") {
-        await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+    socket.onmessage = async ({ data }) => {
+      const message = JSON.parse(data);
+      if (message.type === 'offer') {
+        console.log('📨 Got offer');
+        await pc.setRemoteDescription(new RTCSessionDescription(message));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        socket.send(JSON.stringify({
-          type: "answer",
-          answer: {
-            type: "answer",
-            sdp: answer.sdp
-          },
-          roomId: ROOM_ID
-        }));
-      } else if (data.type === "ice") {
-        try {
-          await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-        } catch (e) {
-          console.error("ICE Error:", e);
-        }
+        socket.send(JSON.stringify({ type: 'answer', sdp: pc.localDescription.sdp }));
+      } else if (message.type === 'candidate') {
+        console.log('📨 Got ICE candidate');
+        await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
       }
     };
   </script>
