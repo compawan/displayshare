@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WebRTC Viewer</title>
+</head>
+<body>
+  <h2>📺 Screen Share Receiver</h2>
+  <video id="remoteVideo" autoplay playsinline style="width: 100%; max-width: 800px; background: black;"></video>
+
+  <script>
+    const remoteVideo = document.getElementById('remoteVideo');
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    });
+
+    const ws = new WebSocket(`ws://${location.host}`);
+
+    // Send our ICE candidates to sender
+    pc.onicecandidate = ({ candidate }) => {
+      if (candidate) {
+        ws.send(JSON.stringify({ type: "candidate", candidate }));
+      }
+    };
+
+    // Show the video stream
+    pc.ontrack = (event) => {
+      console.log("👀 Received track:", event.streams);
+      remoteVideo.srcObject = event.streams[0];
+    };
+
+    // Handle messages from signaling server
+    ws.onmessage = async (msg) => {
+      const data = JSON.parse(msg.data);
+
+      if (data.type === "offer") {
+        console.log("📡 Got offer");
+        await pc.setRemoteDescription(new RTCSessionDescription(data));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        ws.send(JSON.stringify({ type: "answer", sdp: pc.localDescription.sdp }));
+      }
+
+      if (data.type === "candidate") {
+        if (data.candidate) {
+          console.log("📶 Adding ICE candidate");
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+          } catch (e) {
+            console.error("🚫 Error adding ICE candidate", e);
+          }
+        }
+      }
+    };
+  </script>
+</body>
+</html>
