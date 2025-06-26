@@ -10,7 +10,7 @@
   </style>
 </head>
 <body>
-  <h2>WebRTC Screen Sharing with Room</h2>
+  <h2>WebRTC Screen Sharing Test</h2>
   <input id="roomIdInput" placeholder="Enter Room ID" />
   <button id="joinBtn">Join Room</button>
   <button id="start" disabled>Start Screen Share</button>
@@ -20,7 +20,6 @@
   <script>
     let socket;
     let roomId;
-    let canStart = false;
     const peerConnection = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
     });
@@ -28,7 +27,7 @@
     const remoteVideo = document.getElementById('remoteVideo');
 
     peerConnection.onicecandidate = (event) => {
-      if (event.candidate && socket && roomId) {
+      if (event.candidate) {
         socket.emit('signal', { type: 'ice', candidate: event.candidate, roomId });
       }
     };
@@ -39,19 +38,14 @@
 
     document.getElementById('joinBtn').onclick = () => {
       roomId = document.getElementById('roomIdInput').value.trim();
-      if (!roomId) return alert("Enter Room ID");
+      if (!roomId) {
+        alert("Enter a valid Room ID.");
+        return;
+      }
 
-      socket = io(); // Connect to signaling server
+      socket = io(); // Auto-connect to current host
       socket.emit('join-room', roomId);
-
-      socket.on('room-joined', ({ count }) => {
-        if (count >= 2) {
-          canStart = true;
-          document.getElementById('start').disabled = false;
-        } else {
-          alert("Waiting for second participant to join...");
-        }
-      });
+      document.getElementById('start').disabled = false;
 
       socket.on('signal', async (data) => {
         if (data.type === 'offer') {
@@ -72,7 +66,6 @@
     };
 
     document.getElementById('start').onclick = async () => {
-      if (!canStart) return alert("Wait for both users to join the room.");
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
       stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
       const offer = await peerConnection.createOffer();
