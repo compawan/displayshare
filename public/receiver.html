@@ -1,46 +1,38 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <title>📺 Screen Receiver</title>
-</head>
+<head><title>📺 Receiver</title></head>
 <body>
-  <h2>📺 Phone Screen Viewer</h2>
-  <video id="screen" autoplay playsinline style="width: 100%; border: 2px solid #000;"></video>
+<h2>Live Screen Stream</h2>
+<video id="video" autoplay playsinline style="width:100%;border:1px solid black"></video>
+<script>
+const video = document.getElementById("video");
+const socket = new WebSocket("wss://displayshare.onrender.com");
+const pc = new RTCPeerConnection({
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+});
 
-  <script>
-    const socket = new WebSocket(`ws://${location.host}`);
-    const video = document.getElementById('screen');
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-    });
+pc.onicecandidate = (event) => {
+  if (event.candidate) {
+    socket.send(JSON.stringify({ type: "candidate", candidate: event.candidate }));
+  }
+};
 
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket.send(JSON.stringify({
-          type: 'candidate',
-          candidate: event.candidate
-        }));
-      }
-    };
+pc.ontrack = (event) => {
+  console.log("✅ Track received:", event.streams[0]);
+  video.srcObject = event.streams[0];
+};
 
-    pc.ontrack = (event) => {
-      console.log('✅ Received track:', event.streams[0]);
-      video.srcObject = event.streams[0];
-    };
-
-    socket.onmessage = async ({ data }) => {
-      const message = JSON.parse(data);
-      if (message.type === 'offer') {
-        console.log('📨 Got offer');
-        await pc.setRemoteDescription(new RTCSessionDescription(message));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        socket.send(JSON.stringify({ type: 'answer', sdp: pc.localDescription.sdp }));
-      } else if (message.type === 'candidate') {
-        console.log('📨 Got ICE candidate');
-        await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
-      }
-    };
-  </script>
+socket.onmessage = async ({ data }) => {
+  const msg = JSON.parse(data);
+  if (msg.type === "offer") {
+    await pc.setRemoteDescription(new RTCSessionDescription(msg));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    socket.send(JSON.stringify({ type: "answer", sdp: pc.localDescription.sdp }));
+  } else if (msg.type === "candidate") {
+    await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+  }
+};
+</script>
 </body>
 </html>
